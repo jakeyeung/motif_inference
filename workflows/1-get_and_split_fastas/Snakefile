@@ -1,0 +1,42 @@
+# config file containing samples and parameters 
+configfile: "config.yaml" 
+# configfile: "/nfs/scistore12/hpcgrp/jyeung/projects/motif_inference/workflows/config.yaml"
+
+# rules
+
+# use rule all to ensure the output files are made
+rule all:
+	input: 
+		config["scratchmain"] + "/fastasplit/split_files.log"
+
+rule get_fasta:
+	input:
+		config["windowsf"]
+	output:
+		config["scratchmain"] + "/fasta/" + config["windowsnoext"] + ".fa"
+	params:
+		config["windowsnoext"]
+	shell:
+		"bash " + config["projdir"] + "/1-get_fasta.sh {input} {params} " + config["fastaref"] + " " + config["scratchmain"] + "/fasta " + config["wmdir"] + " " + config["bedtoolsbin"]
+
+rule split_fasta:
+	input:
+		config["scratchmain"] + "/fasta/" + config["windowsnoext"] + ".fa"
+	output:
+		config["scratchmain"] + "/fastasplit/split_files.log"
+	params:
+		fastadir=config["scratchmain"] + "/fastasplit"
+	shell:
+		"bash " + config["projdir"] + "/2-split_fasta.sh {input} {params.fastadir} " + config["genomeprefix"]
+
+
+# rule run_motevo:
+# 	input:
+# 		config["scratchmain"] + "/fastasplit/split_files.log"
+# 	output:
+# 		config["scratchmain"] + "/motevo_outputs/motevo_outputs.log"
+# 	params:
+# 		fastasplitdir=config["scratchmain"] + "/fastasplit"
+# 	shell:
+# 		"bash " + config["projdir"] + "/3-run_motevo_sbatch2.sh " + config["sitecountscript"] + " " + config["motevobin"] + " " + config["wmdir"] + " {params.fastasplitdir} " + config["scratchmain"] + "/motevo_outputs"
+# 

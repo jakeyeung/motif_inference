@@ -1,0 +1,123 @@
+# config file containing samples and parameters 
+configfile: "config.yaml" 
+# configfile: "/nfs/scistore12/hpcgrp/jyeung/projects/motif_inference/workflows/config.yaml"
+
+# rules
+
+# use rule all to ensure the output files are made
+rule all:
+	input: 
+		# config["scratchmain"] + "/motevo_outputs/motevo_outputs.log"
+		# config["scratchmain"] + "/motevo_outputs/merged/merge_motevo_output.log"
+		# config["scratchmain"] + "/motevo_outputs/bed/make_bed_output.log"
+		# config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/assign_gene_log.out"
+		# config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/long_format/bed_to_long.out"
+		# config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long/motevo_merged.closest.long.bed.gz"
+		# config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long/motevo_merged.closest.long.reannotated.bed.gz"
+		config["scratchmain"] + "/motevo_outputs/sitecount_mat/sitecount_mat_from_bed.txt"
+
+rule get_fasta:
+	input:
+		config["windowsf"]
+	output:
+		config["scratchmain"] + "/fasta/" + config["windowsnoext"] + ".fa"
+	params:
+		config["windowsnoext"]
+	shell:
+		"bash " + config["projdir"] + "/1-get_fasta.sh {input} {params} " + config["fastaref"] + " " + config["scratchmain"] + "/fasta " + config["wmdir"] + " " + config["bedtoolsbin"]
+
+rule split_fasta:
+	input:
+		config["scratchmain"] + "/fasta/" + config["windowsnoext"] + ".fa"
+	output:
+		config["scratchmain"] + "/fastasplit/split_files.log"
+	params:
+		fastadir=config["scratchmain"] + "/fastasplit"
+	shell:
+		"bash " + config["projdir"] + "/2-split_fasta.sh {input} {params.fastadir} " + config["genomeprefix"]
+
+
+rule run_motevo:
+	input:
+		config["scratchmain"] + "/fastasplit/split_files.log"
+	output:
+		config["scratchmain"] + "/motevo_outputs/motevo_outputs.log"
+	params:
+		fastasplitdir=config["scratchmain"] + "/fastasplit"
+	shell:
+		"bash " + config["projdir"] + "/3-run_motevo_sbatch2.sh " + config["sitecountscript"] + " " + config["motevobin"] + " " + config["wmdir"] + " {params.fastasplitdir} " + config["scratchmain"] + "/motevo_outputs"
+
+rule merge_motevo:
+	input:
+		config["scratchmain"] + "/motevo_outputs/motevo_outputs.log"
+	output:
+		config["scratchmain"] + "/motevo_outputs/merged/merge_motevo_output.log"
+	params:
+		motevodirtmpsplit=config["scratchmain"] + "/motevo_outputs/split",
+		motevodirtmpmerged=config["scratchmain"] + "/motevo_outputs/merged"	
+	shell:
+		"bash " + config["projdir"] + "/4-merge_motevo_output.sh " + config["mergescript"] + " " + config["wmdir"] + " {params.motevodirtmpsplit} {params.motevodirtmpmerged} " + config["wmnames"]
+
+rule make_bed:
+	input:
+		config["scratchmain"] + "/motevo_outputs/merged/merge_motevo_output.log"
+	output:
+		config["scratchmain"] + "/motevo_outputs/bed/make_bed_output.log"
+	params:
+		motevodirtmpmerged=config["scratchmain"] + "/motevo_outputs/merged",
+		motevodirtmpbed=config["scratchmain"] + "/motevo_outputs/bed"
+	shell:
+		"bash " + config["projdir"]  + "/5-make_bed_from_merged_motevo_output.sh" + " " + config["convertscript"] + " " + "{params.motevodirtmpmerged}" + " " + "{params.motevodirtmpbed}"
+
+rule assign_gene:
+	input:
+		config["scratchmain"] + "/motevo_outputs/bed/make_bed_output.log"
+	output:
+		config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/assign_gene_log.out"
+	params:
+		motevodirtmpbed=config["scratchmain"] + "/motevo_outputs/bed",
+		motevodirtmpclosest=config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes"
+	shell:
+		"bash " + config["projdir"]  + "/6-assign_to_gene.sh" + " " + config["assignscript"] + " " + config["windowsf"] + " " + "{params.motevodirtmpbed}" + " " + "{params.motevodirtmpclosest}"
+	
+
+rule bed_to_long:
+	input:	
+		config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/assign_gene_log.out"
+	output:
+		config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/long_format/bed_to_long.out"
+	params:
+		motevodirtmpclosest=config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes",
+		motevodirtmpclosestlong=config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/long_format"
+	shell:
+		"bash " + config["projdir"]  + "/7-compressed_bed_to_long.sh" + " " + config["decompress"] + " " + "{params.motevodirtmpclosest}" + " " + "{params.motevodirtmpclosestlong}"
+
+rule cat_beds:
+	input:
+		config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/long_format/bed_to_long.out"
+	output:
+		config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long/motevo_merged.closest.long.bed.gz"
+	params:
+		motevodirtmpclosestlong=config["scratchmain"] + "/motevo_outputs/closestbed_multiple_genes/long_format",
+		merged_motevodirtmpbed=config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long"
+	shell:
+		"bash " + config["projdir"]  + "/8-cat_beds.sh" + " " + "{params.motevodirtmpclosestlong}" + " " + "{params.merged_motevodirtmpbed}"
+
+
+rule reannotate_distances:
+	input:
+		config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long/motevo_merged.closest.long.bed.gz"
+	output:
+		config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long/motevo_merged.closest.long.reannotated.bed.gz"
+	shell:
+		"bash " + config["projdir"]  + "/9-reannotate_distance_on_bed.sh" + " " + config["reannotatescript"] + " " + "{input}"
+
+rule make_sitecount_mat:
+	input:
+		config["scratchmain"] + "/motevo_outputs/bed/merged_bed_closestbed_long/motevo_merged.closest.long.reannotated.bed.gz"
+	output:
+		config["scratchmain"] + "/motevo_outputs/sitecount_mat/sitecount_mat_from_bed.txt"
+	shell:
+		"bash " + config["projdir"] + "/10-make_sitecont_matrix_from_bed.sh" + " " + config["makesitecountscript"] + " " + "{input}" + " " + "{output}"
+
+
